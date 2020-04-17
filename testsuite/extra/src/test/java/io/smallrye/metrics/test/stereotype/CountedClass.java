@@ -15,22 +15,15 @@
  * limitations under the License.
  */
 
-package io.smallrye.metrics.elementdesc;
+package io.smallrye.metrics.test.stereotype;
 
-public interface AnnotationInfo {
+import io.smallrye.metrics.test.stereotype.stereotypes.CountMe;
 
-    String name();
+@CountMe
+public class CountedClass {
 
-    boolean absolute();
+    public void foo() {
 
-    String[] tags();
-
-    String unit();
-
-    String description();
-
-    String displayName();
-
-    String annotationName();
+    }
 
 }

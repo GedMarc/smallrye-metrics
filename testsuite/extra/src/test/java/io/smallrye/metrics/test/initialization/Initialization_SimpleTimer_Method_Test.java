@@ -15,50 +15,54 @@
  *   limitations under the License.
  */
 
-package io.smallrye.metrics.test.reusability;
+package io.smallrye.metrics.test.initialization;
+
+import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertTrue;
 
 import javax.inject.Inject;
 
 import org.eclipse.microprofile.metrics.MetricID;
 import org.eclipse.microprofile.metrics.MetricRegistry;
-import org.eclipse.microprofile.metrics.Tag;
+import org.eclipse.microprofile.metrics.annotation.SimplyTimed;
 import org.jboss.arquillian.container.test.api.Deployment;
 import org.jboss.arquillian.junit.Arquillian;
 import org.jboss.shrinkwrap.api.ShrinkWrap;
 import org.jboss.shrinkwrap.api.asset.EmptyAsset;
 import org.jboss.shrinkwrap.api.spec.WebArchive;
-import org.junit.Assert;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 
-/**
- * Test that two metrics of the same name and differing tags can be created by annotations.
- */
 @RunWith(Arquillian.class)
-public class NonReusableMetricWithDifferingTagsTest {
-
-    @Inject
-    private MetricRegistry metricRegistry;
-
-    @Inject
-    private NonReusableMetricWithDifferingTagsBean bean;
+public class Initialization_SimpleTimer_Method_Test {
 
     @Deployment
     public static WebArchive deployment() {
         return ShrinkWrap.create(WebArchive.class)
                 .addAsWebInfResource(EmptyAsset.INSTANCE, "beans.xml")
-                .addClass(NonReusableMetricWithDifferingTagsBean.class);
+                .addClasses(BeanWithSimpleTimer_Method.class);
     }
+
+    @Inject
+    MetricRegistry registry;
+
+    @Inject
+    BeanWithSimpleTimer_Method bean;
 
     @Test
     public void test() {
-        bean.colorBlue();
-        bean.colorBlue();
-        bean.colorRed();
-        Assert.assertEquals(2,
-                metricRegistry.getCounters().get(new MetricID("colorCounter", new Tag("color", "blue"))).getCount());
-        Assert.assertEquals(1,
-                metricRegistry.getCounters().get(new MetricID("colorCounter", new Tag("color", "red"))).getCount());
+        assertTrue(registry.getSimpleTimers().containsKey(new MetricID("simplytimed_method")));
+        bean.timedMethod();
+        assertEquals(1, registry.getSimpleTimers().get(new MetricID("simplytimed_method")).getCount());
+    }
+
+    public static class BeanWithSimpleTimer_Method {
+
+        @SimplyTimed(name = "simplytimed_method", absolute = true)
+        public void timedMethod() {
+
+        }
+
     }
 
 }

@@ -19,6 +19,7 @@ package io.smallrye.metrics;
 import java.util.HashMap;
 import java.util.Iterator;
 import java.util.Map;
+import java.util.Objects;
 import java.util.SortedMap;
 import java.util.SortedSet;
 import java.util.TreeMap;
@@ -56,14 +57,12 @@ import io.smallrye.metrics.app.TimerImpl;
  * @author hrupp
  */
 @Vetoed
-public class MetricsRegistryImpl extends MetricRegistry {
+public class MetricsRegistryImpl implements MetricRegistry {
 
     private static Logger log = Logger.getLogger(MetricsRegistryImpl.class);
 
-    private Map<String, Metadata> metadataMap = new HashMap<>();
+    private Map<String, Metadata> metadataMap = new ConcurrentHashMap<>();
 
-    // Only this map needs to be concurrent because it is being iterated in getMetrics which is not synchronized.
-    // Other maps are accessed only in synchronized methods.
     private Map<MetricID, Metric> metricMap = new ConcurrentHashMap<>();
 
     /*
@@ -72,6 +71,21 @@ public class MetricsRegistryImpl extends MetricRegistry {
      * is only tracked per Metric Name, that's why we need two maps for that now.
      */
     private Map<MetricID, Object> originMap = new HashMap<>();
+
+    private Type registryType;
+
+    private MemberToMetricMappings memberToMetricMappings;
+
+    public MetricsRegistryImpl() {
+        this(null);
+    }
+
+    public MetricsRegistryImpl(Type registryType) {
+        this.registryType = registryType;
+        if (registryType == Type.APPLICATION) {
+            memberToMetricMappings = new MemberToMetricMappings();
+        }
+    }
 
     @Override
     public synchronized <T extends Metric> T register(String name, T metric) {
@@ -120,15 +134,8 @@ public class MetricsRegistryImpl extends MetricRegistry {
         MetricID metricID = new MetricID(name, tags);
         Metadata existingMetadata = metadataMap.get(name);
 
-        boolean reusableFlag = (existingMetadata == null || existingMetadata.isReusable());
-
-        //Gauges are not reusable
-        if (metadata.getTypeRaw().equals(MetricType.GAUGE)) {
-            reusableFlag = false;
-        }
-
-        if (metricMap.keySet().contains(metricID) && !reusableFlag) {
-            throw new IllegalArgumentException("A metric with metricID " + metricID + " already exists");
+        if (metricMap.containsKey(metricID) && metadata.getTypeRaw().equals(MetricType.GAUGE)) {
+            throw new IllegalArgumentException("A gauge with metricID " + metricID + " already exists");
         }
 
         /*
@@ -183,9 +190,6 @@ public class MetricsRegistryImpl extends MetricRegistry {
 
         // unspecified means that someone is programmatically obtaining a metric instance without specifying the metadata, so we check only the name and type
         if (!(newMetadata instanceof UnspecifiedMetadata)) {
-            if (existingMetadata.isReusable() != newMetadata.isReusable()) {
-                throw new IllegalStateException("Reusable flag differs from previous usage");
-            }
 
             String existingUnit = existingMetadata.getUnit().orElse("none");
             String newUnit = newMetadata.getUnit().orElse("none");
@@ -228,6 +232,29 @@ public class MetricsRegistryImpl extends MetricRegistry {
     }
 
     @Override
+    public Counter counter(MetricID metricID) {
+        return get(metricID, new UnspecifiedMetadata(metricID.getName(), MetricType.COUNTER));
+    }
+
+    @Override
+    public Gauge<?> gauge(String name, Gauge<?> gauge) {
+        Objects.requireNonNull(gauge);
+        return get(new MetricID(name), new UnspecifiedMetadata(name, MetricType.GAUGE), gauge);
+    }
+
+    @Override
+    public Gauge<?> gauge(String name, Gauge<?> gauge, Tag... tags) {
+        Objects.requireNonNull(gauge);
+        return get(new MetricID(name, tags), new UnspecifiedMetadata(name, MetricType.GAUGE), gauge);
+    }
+
+    @Override
+    public Gauge<?> gauge(MetricID metricID, Gauge<?> gauge) {
+        Objects.requireNonNull(gauge);
+        return get(metricID, new UnspecifiedMetadata(metricID.getName(), MetricType.GAUGE), gauge);
+    }
+
+    @Override
     public ConcurrentGauge concurrentGauge(String name) {
         return get(new MetricID(name),
                 new UnspecifiedMetadata(name, MetricType.CONCURRENT_GAUGE));
@@ -236,6 +263,11 @@ public class MetricsRegistryImpl extends MetricRegistry {
     @Override
     public ConcurrentGauge concurrentGauge(Metadata metadata) {
         return get(new MetricID(metadata.getName()), sanitizeMetadata(metadata, MetricType.CONCURRENT_GAUGE));
+    }
+
+    @Override
+    public ConcurrentGauge concurrentGauge(MetricID metricID) {
+        return get(metricID, new UnspecifiedMetadata(metricID.getName(), MetricType.CONCURRENT_GAUGE));
     }
 
     @Override
@@ -261,6 +293,11 @@ public class MetricsRegistryImpl extends MetricRegistry {
     }
 
     @Override
+    public Histogram histogram(MetricID metricID) {
+        return get(metricID, new UnspecifiedMetadata(metricID.getName(), MetricType.HISTOGRAM));
+    }
+
+    @Override
     public Histogram histogram(String name, Tag... tags) {
         return get(new MetricID(name, tags),
                 new UnspecifiedMetadata(name, MetricType.HISTOGRAM));
@@ -283,6 +320,11 @@ public class MetricsRegistryImpl extends MetricRegistry {
     }
 
     @Override
+    public Meter meter(MetricID metricID) {
+        return get(metricID, new UnspecifiedMetadata(metricID.getName(), MetricType.METERED));
+    }
+
+    @Override
     public Meter meter(String name, Tag... tags) {
         return get(new MetricID(name, tags),
                 new UnspecifiedMetadata(name, MetricType.METERED));
@@ -302,6 +344,11 @@ public class MetricsRegistryImpl extends MetricRegistry {
     @Override
     public Timer timer(Metadata metadata) {
         return get(new MetricID(metadata.getName()), sanitizeMetadata(metadata, MetricType.TIMER));
+    }
+
+    @Override
+    public Timer timer(MetricID metricID) {
+        return get(metricID, new UnspecifiedMetadata(metricID.getName(), MetricType.TIMER));
     }
 
     @Override
@@ -337,7 +384,16 @@ public class MetricsRegistryImpl extends MetricRegistry {
         return get(new MetricID(metadata.getName(), tags), sanitizeMetadata(metadata, MetricType.SIMPLE_TIMER));
     }
 
-    private synchronized <T extends Metric> T get(MetricID metricID, Metadata metadata) {
+    @Override
+    public SimpleTimer simpleTimer(MetricID metricID) {
+        return get(metricID, new UnspecifiedMetadata(metricID.getName(), MetricType.SIMPLE_TIMER));
+    }
+
+    private <T extends Metric> T get(MetricID metricID, Metadata metadata) {
+        return get(metricID, metadata, null);
+    }
+
+    private synchronized <T extends Metric> T get(MetricID metricID, Metadata metadata, T implementor) {
         String name = metadata.getName();
         MetricType type = metadata.getTypeRaw();
         if (name == null || name.isEmpty()) {
@@ -355,7 +411,8 @@ public class MetricsRegistryImpl extends MetricRegistry {
                     m = new CounterImpl();
                     break;
                 case GAUGE:
-                    throw new IllegalArgumentException("Gauge " + name + " was not registered, this should not happen");
+                    m = implementor;
+                    break;
                 case METERED:
                     m = new MeterImpl();
                     break;
@@ -390,11 +447,6 @@ public class MetricsRegistryImpl extends MetricRegistry {
                 originMap.get(metricID) != null &&
                 areCompatibleOrigins(originMap.get(metricID), ((OriginAndMetadata) metadata).getOrigin())) {
             // stop caring, same thing.
-        } else if (previousMetadata.isReusable() && (!(metadata instanceof UnspecifiedMetadata) && !metadata.isReusable())) {
-            throw new IllegalArgumentException(
-                    "Previously registered metric " + name + " was flagged as reusable, while current request is not.");
-        } else if (!previousMetadata.isReusable()) {
-            throw new IllegalArgumentException("Previously registered metric " + name + " was not flagged as reusable");
         } else {
             verifyMetadataEquality(metadata, previousMetadata);
         }
@@ -540,8 +592,23 @@ public class MetricsRegistryImpl extends MetricRegistry {
 
     @Override
     public Map<MetricID, Metric> getMetrics() {
-
         return new HashMap<>(metricMap);
+    }
+
+    @Override
+    public Metric getMetric(MetricID metricID) {
+        return metricMap.get(metricID);
+    }
+
+    @Override
+    public SortedMap<MetricID, Metric> getMetrics(MetricFilter filter) {
+        SortedMap<MetricID, Metric> out = new TreeMap<>();
+        for (Map.Entry<MetricID, Metric> entry : metricMap.entrySet()) {
+            if (filter.matches(entry.getKey(), entry.getValue())) {
+                out.put(entry.getKey(), entry.getValue());
+            }
+        }
+        return out;
     }
 
     private Metadata sanitizeMetadata(Metadata metadata, MetricType metricType) {
@@ -597,5 +664,19 @@ public class MetricsRegistryImpl extends MetricRegistry {
     @Override
     public synchronized Map<String, Metadata> getMetadata() {
         return new HashMap<>(metadataMap);
+    }
+
+    @Override
+    public Metadata getMetadata(String name) {
+        return metadataMap.get(name);
+    }
+
+    @Override
+    public Type getType() {
+        return registryType;
+    }
+
+    public MemberToMetricMappings getMemberToMetricMappings() {
+        return memberToMetricMappings;
     }
 }

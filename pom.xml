@@ -26,7 +26,7 @@
   </parent>
 
   <artifactId>smallrye-metrics-parent</artifactId>
-  <version>2.4.1-SNAPSHOT</version>
+  <version>3.0.0-SNAPSHOT</version>
 
   <packaging>pom</packaging>
   <name>SmallRye: MicroProfile Metrics Parent</name>
@@ -34,13 +34,13 @@
 
   <properties>
     <version.microprofile-config>1.4</version.microprofile-config>
-    <version.microprofile-metrics>2.3</version.microprofile-metrics>
+    <version.microprofile-metrics>3.0-M3</version.microprofile-metrics>
 
-    <version.smallrye.config>1.6.1</version.smallrye.config>
+    <version.smallrye.config>1.7.0</version.smallrye.config>
 
     <version.jakarta.servlet>4.0.3</version.jakarta.servlet>
 
-    <sonar.coverage.jacoco.xmlReportPaths>target/site/jacoco/jacoco.xml</sonar.coverage.jacoco.xmlReportPaths>
+    <sonar.coverage.jacoco.xmlReportPaths>${project.basedir}/../coverage/target/site/jacoco-aggregate/jacoco.xml</sonar.coverage.jacoco.xmlReportPaths>
   </properties>
 
   <licenses>
@@ -124,6 +124,15 @@
         <module>release</module>
       </modules>
     </profile>
+    <profile>
+      <id>coverage</id>
+      <properties>
+        <argLine>@{jacocoArgLine}</argLine>
+      </properties>
+      <modules>
+        <module>coverage</module>
+      </modules>
+</profile>
   </profiles>
 
 </project>

@@ -17,6 +17,7 @@
 
 package io.smallrye.metrics.exporters;
 
+import java.time.Duration;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Iterator;
@@ -254,6 +255,7 @@ public class OpenMetricsExporter implements Exporter {
         writeHelpLine(sb, scope, md.getName(), md, theUnit);
         writeTypeLine(sb, scope, md.getName(), md, theUnit, SUMMARY);
         writeValueLine(sb, scope, theUnit + "_count", timer.getCount(), md, tags, false);
+        writeTypeAndValue(sb, scope, "_elapsedTime" + theUnit, timer.getElapsedTime().toNanos(), GAUGE, md, true, tags);
 
         writeSnapshotQuantiles(sb, scope, md, snapshot, theUnit, true, tags);
     }
@@ -269,9 +271,20 @@ public class OpenMetricsExporter implements Exporter {
         // 'total' value plus the help line
         writeHelpLine(sb, scope, md.getName(), md, "_total");
         writeTypeAndValue(sb, scope, "_total", simpleTimer.getCount(), COUNTER, md, false, tags);
-
-        // 'elapsed time' value
         writeTypeAndValue(sb, scope, "_elapsedTime" + theUnit, simpleTimer.getElapsedTime().toNanos(), GAUGE, md, true, tags);
+        Duration min = simpleTimer.getMinTimeDuration();
+        Duration max = simpleTimer.getMaxTimeDuration();
+        if (min != null) {
+            writeTypeAndValue(sb, scope, "_minTimeDuration" + theUnit, min.toNanos(), GAUGE, md, true, tags);
+        } else {
+            writeTypeAndValue(sb, scope, "_minTimeDuration" + theUnit, Double.NaN, GAUGE, md, true, tags);
+        }
+        if (max != null) {
+            writeTypeAndValue(sb, scope, "_maxTimeDuration" + theUnit, max.toNanos(), GAUGE, md, true, tags);
+        } else {
+            writeTypeAndValue(sb, scope, "_maxTimeDuration" + theUnit, Double.NaN, GAUGE, md, true, tags);
+        }
+
     }
 
     private void writeConcurrentGaugeValues(StringBuilder sb, MetricRegistry.Type scope, ConcurrentGauge concurrentGauge,
@@ -544,7 +557,9 @@ public class OpenMetricsExporter implements Exporter {
 
     public static String quoteValue(String value) {
         return value
-                // replace \ with \\, unless it is followed by n, in which case it is a newline character, which should not be changed
+                // replace newline characters with a literal \n
+                .replaceAll("\\n", "\\\\n")
+                // replace \ with \\, unless it is followed by n (which means it is an already escaped newline character from the previous step)
                 .replaceAll("\\\\([^n])", "\\\\\\\\$1")
                 // replace " with \"
                 .replaceAll("\"", "\\\\\"")

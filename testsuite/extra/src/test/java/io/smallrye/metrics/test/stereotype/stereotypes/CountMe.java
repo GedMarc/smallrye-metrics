@@ -15,22 +15,21 @@
  * limitations under the License.
  */
 
-package io.smallrye.metrics.elementdesc;
+package io.smallrye.metrics.test.stereotype.stereotypes;
 
-public interface AnnotationInfo {
+import java.lang.annotation.ElementType;
+import java.lang.annotation.Retention;
+import java.lang.annotation.RetentionPolicy;
+import java.lang.annotation.Target;
 
-    String name();
+import javax.enterprise.inject.Stereotype;
 
-    boolean absolute();
+import org.eclipse.microprofile.metrics.annotation.Counted;
 
-    String[] tags();
-
-    String unit();
-
-    String description();
-
-    String displayName();
-
-    String annotationName();
+@Stereotype
+@Retention(RetentionPolicy.RUNTIME)
+@Target({ ElementType.TYPE, ElementType.METHOD, ElementType.FIELD })
+@Counted
+public @interface CountMe {
 
 }

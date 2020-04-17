@@ -18,6 +18,7 @@
 package io.smallrye.metrics.exporters;
 
 import java.io.StringWriter;
+import java.time.Duration;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
@@ -243,6 +244,18 @@ public class JsonExporter implements Exporter {
         JsonObjectBuilder builder = Json.createObjectBuilder();
         builder.add("count" + tags, timer.getCount());
         builder.add("elapsedTime" + tags, toBase(timer.getElapsedTime().toNanos(), unit));
+        Duration minTimeDuration = timer.getMinTimeDuration();
+        if (minTimeDuration != null) {
+            builder.add("minTimeDuration" + tags, toBase(minTimeDuration.toNanos(), unit));
+        } else {
+            builder.add("minTimeDuration" + tags, JsonValue.NULL);
+        }
+        Duration maxTimeDuration = timer.getMaxTimeDuration();
+        if (maxTimeDuration != null) {
+            builder.add("maxTimeDuration" + tags, toBase(maxTimeDuration.toNanos(), unit));
+        } else {
+            builder.add("maxTimeDuration" + tags, JsonValue.NULL);
+        }
         return builder.build();
     }
 
@@ -252,6 +265,7 @@ public class JsonExporter implements Exporter {
                 .forEach(builder::add);
         meterValues(timer, tags)
                 .forEach(builder::add);
+        builder.add("elapsedTime" + tags, toBase(timer.getElapsedTime().toNanos(), unit));
         return builder.build();
     }
 
